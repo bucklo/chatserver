@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"chatserver/pkg/db"
 	"encoding/json"
 	"io"
 	"log"
@@ -26,4 +27,6 @@ func Register(w http.ResponseWriter, req *http.Request) {
 	}
 
 	logRequest(req)
+
+	db.AddUser(m.Login, m.Password)
 }

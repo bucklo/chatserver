@@ -10,6 +10,9 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
+var dbPool *pgxpool.Pool
+var ctx context.Context = context.Background()
+
 func getEnv(key, fallback string) string {
 	value := os.Getenv(key)
 	if len(value) == 0 {
@@ -18,7 +21,7 @@ func getEnv(key, fallback string) string {
 	return value
 }
 
-func connect(ctx context.Context) (*pgxpool.Pool, error) {
+func connect(ctx context.Context) error {
 	host := getEnv("POSTGRES_HOST", "localhost")
 	port := getEnv("POSTGRES_PORT", "5432")
 	user := getEnv("POSTGRES_USER", "postgres")
@@ -26,7 +29,6 @@ func connect(ctx context.Context) (*pgxpool.Pool, error) {
 
 	connStr := fmt.Sprintf("postgres://%v:%v@%v:%v/chatserver?sslmode=disable", user, password, host, port)
 
-	var dbPool *pgxpool.Pool
 	var err error
 
 	for i := 1; i < 10; i++ {
@@ -37,25 +39,23 @@ func connect(ctx context.Context) (*pgxpool.Pool, error) {
 			continue
 		} else {
 			log.Print("Successfully connected to DB")
-			return dbPool, err
+			return err
 		}
 	}
 
 	// Test the DB connection. This is only reached if the for-loop above failed
 	// to establish a database connection.
 	err = dbPool.Ping(ctx)
-	return nil, err
+	return err
 }
 
 func InitializeDB() (*pgxpool.Pool, error) {
-	ctx := context.Background()
-
-	dbPool, err := connect(ctx)
+	err := connect(ctx)
 	if err != nil {
 		fmt.Print(err)
 	}
 
-	cmdTag, err := dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS users(id INT)")
+	cmdTag, err := dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())")
 	if err != nil {
 		fmt.Print(err)
 	}
@@ -63,4 +63,29 @@ func InitializeDB() (*pgxpool.Pool, error) {
 	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
 
 	return dbPool, err
+}
+
+func UserExists(username string) bool {
+	var exists bool
+
+	err := dbPool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)", username).Scan(&exists)
+	if err != nil {
+		fmt.Print(err)
+	}
+
+	return exists
+}
+
+func AddUser(username, password string) {
+	if UserExists(username) {
+		log.Printf("User %v already exists", username)
+		return
+	}
+
+	cmdTag, err := dbPool.Exec(ctx, "INSERT INTO users (username, password) VALUES ($1, $2)", username, password)
+	if err != nil {
+		fmt.Print(err)
+	}
+
+	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
 }
