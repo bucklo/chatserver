@@ -77,6 +77,7 @@ func UserExists(username string) bool {
 }
 
 func AddUser(username, password string) {
+	log.Printf("Registering user %v", username)
 	if UserExists(username) {
 		log.Printf("User %v already exists", username)
 		return
