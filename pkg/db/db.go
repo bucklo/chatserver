@@ -55,7 +55,25 @@ func InitializeDB() (*pgxpool.Pool, error) {
 		fmt.Print(err)
 	}
 
-	cmdTag, err := dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())")
+	cmdTag, err := dbPool.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS pgcrypto")
+	if err != nil {
+		fmt.Print(err)
+	}
+	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
+
+	cmdTag, err = dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())")
+	if err != nil {
+		fmt.Print(err)
+	}
+	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
+
+	cmdTag, err = dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS messages(id SERIAL PRIMARY KEY, sender_id INTEGER NOT NULL, room_id INTEGER NOT NULL, message VARCHAR(255) NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW(), FOREIGN KEY (sender_id) REFERENCES users(id), FOREIGN KEY (room_id) REFERENCES rooms(id))")
+	if err != nil {
+		fmt.Print(err)
+	}
+	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
+
+	cmdTag, err = dbPool.Exec(ctx, "CREATE TABLE IF NOT EXISTS rooms(id SERIAL PRIMARY KEY, name VARCHAR(255) UNIQUE NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())")
 	if err != nil {
 		fmt.Print(err)
 	}
@@ -78,15 +96,27 @@ func UserExists(username string) bool {
 
 func AddUser(username, password string) {
 	log.Printf("Registering user %v", username)
+
 	if UserExists(username) {
 		log.Printf("User %v already exists", username)
 		return
 	}
 
-	cmdTag, err := dbPool.Exec(ctx, "INSERT INTO users (username, password) VALUES ($1, $2)", username, password)
+	cmdTag, err := dbPool.Exec(ctx, "INSERT INTO users (username, password) VALUES ($1, crypt($2, gen_salt('bf')))", username, password)
 	if err != nil {
 		fmt.Print(err)
 	}
 
 	log.Printf("%v, %v rows affected.", cmdTag, cmdTag.RowsAffected())
+}
+
+func AuthenticateUser(username, password string) bool {
+	var exists bool
+
+	err := dbPool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND password = crypt($2, password))", username, password).Scan(&exists)
+	if err != nil {
+		fmt.Print(err)
+	}
+
+	return exists
 }

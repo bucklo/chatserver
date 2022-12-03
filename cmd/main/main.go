@@ -15,5 +15,6 @@ func main() {
 	defer dbPool.Close()
 
 	http.HandleFunc("/register", routes.Register)
+	http.HandleFunc("/login", routes.Login)
 	http.ListenAndServe(":8080", nil)
 }
